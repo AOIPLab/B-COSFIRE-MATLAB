@@ -1,3 +1,5 @@
+# NOTE: JG forked this code then made several commits in this order: replaced with burns contents, then reverted to forked content, then updated with content from gitlab moved location.
+
 # MATLAB implementation of B-COSFIRE filters
 B-COSFIRE filters are non-linear trainable filters for detection of elongated patterns in images.  
 This is the code of the trainable non-linear B-COSFIRE filters for delineation of elongated patterns

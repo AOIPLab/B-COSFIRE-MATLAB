@@ -1,35 +1,18 @@
-% Delineation of blood vessels in retinal images based on combination of BCOSFIRE filters responses.
-%
-% VERSION 02/09/2016
-% CREATED BY: George Azzopardi (1), Nicola Strisciuglio (1,2), Mario Vento (2) and Nicolai Petkov (1)
-%             1) University of Groningen, Johann Bernoulli Institute for Mathematics and Computer Science, Intelligent Systems
-%             1) University of Salerno, Dept. of Information Eng., Electrical Eng. and Applied Math., MIVIA Lab
-%
-%   If you use this script please cite the following paper:
-%   [1] "George Azzopardi, Nicola Strisciuglio, Mario Vento, Nicolai Petkov, 
-%   Trainable COSFIRE filters for vessel delineation with application to retinal images, 
-%   Medical Image Analysis, Volume 19 , Issue 1 , 46 - 57, ISSN 1361-8415, 
-%   http://dx.doi.org/10.1016/j.media.2014.08.002"
-% 
-%   BCOSFIRE achieves orientation selectivity by combining the output - at certain 
-%   positions with respect to the center of the COSFIRE filter - of center-on 
-%   difference of Gaussians (DoG) functions by a  geometric mean. 
-
-function rotations = applyCOSFIRE(inputImage, operatorlist)
+function [output] = applyCOSFIRE(inputImage, operatorlist)
 
 tuple = computeTuples(inputImage,operatorlist);
-
 output = cell(1,length(operatorlist));
-oriensmap = cell(1,length(operatorlist));
 
 for opindex = 1:length(operatorlist)
     operator = operatorlist{opindex};
 
     cosfirefun = @(inputImage,operator,tuple) computeCOSFIRE(inputImage,operator,tuple);                                                  
-    rotations{opindex} = rotationInvariantCOSFIRE(inputImage,operator,tuple,cosfirefun);
-        
+    scalefun = @(inputImage,operator,tuple) scaleInvariantCOSFIRE(inputImage,operator,tuple,cosfirefun);
+    rotationfun = @(inputImage,operator,tuple) rotationInvariantCOSFIRE(inputImage,operator,tuple,scalefun);
+    output{opindex} = reflectionInvariantCOSFIRE(inputImage,operator,tuple,rotationfun);                     
+
     % Suppress values that are less than a fraction t3 of the maximum
-    %output{opindex}(output{opindex} < operator.params.COSFIRE.t3 * max(output{opindex}(:))) = 0;
+    output{opindex}(output{opindex} < operator.params.COSFIRE.t3 * max(output{opindex}(:))) = 0;
 end
 
 function [tuple] = computeTuples(inputImage,operator)
@@ -107,9 +90,7 @@ switch (params.ht)
         for i = 1:size(inputfilterparams,1)
             inputfilterresponse(:,:,i) = getGaborResponse(inputImage,params,inputfilterparams(i,1),inputfilterparams(i,2));    
         end
-        % Half-wave rectification (a.k.a Rectifier Linear Unit, ReLU) for
-        % t1 = 0
-        inputfilterresponse(inputfilterresponse < params.COSFIRE.t1 * max(inputfilterresponse(:))) = 0;
+        inputfilterresponse(inputfilterresponse < params.COSFIRE.t1*max(inputfilterresponse(:))) = 0;
         
         response = cell(1,size(tupleparams,1));
         for i = 1:size(tupleparams,1)
@@ -133,7 +114,7 @@ switch (params.ht)
             end            
 
             if strcmp(params.COSFIRE.outputfunction,'weightedgeometricmean')                     
-                weight = exp(-tupleparams(i,3)^2 / (2*params.COSFIRE.weightingsigma*params.COSFIRE.weightingsigma)); 
+                weight = exp(-tupleparams(i,3)^2/(2*params.COSFIRE.weightingsigma*params.COSFIRE.weightingsigma)); 
                 response{i} = response{i} .^ weight;                    
             end
         end
@@ -220,7 +201,7 @@ if operator.params.invariance.reflection == 1
     output = max(output, reflectionoutput);
 end
 
-function rotations = rotationInvariantCOSFIRE(inputImage,operator,tuple,funCOSFIRE)
+function [output] = rotationInvariantCOSFIRE(inputImage,operator,tuple,funCOSFIRE)
 
 output = zeros(size(inputImage));
 noriens = length(operator.params.invariance.rotation.psilist);
@@ -245,9 +226,8 @@ for psiindex = 1:noriens
     rotations(:,:, psiindex) = rotoutput;
     
     % Take the maximum over the COSFIRE outputs for all given values of psi
-    %[output,oriensmap] = max(rotoutput, output);    
+    output = max(rotoutput, output);
 end
-[output,oriensmap] = max(rotations,[],3);    
 
 function [output] = scaleInvariantCOSFIRE(inputImage,operator,tuple,funCOSFIRE)
 
@@ -286,10 +266,10 @@ for sindex = 1:ntuples
     switch (operator.params.ht)
         case 0
             index = ismember(tuple.params,operator.tuples(1:3,sindex)','rows');
-            tupleoutput = circshift(tuple.response{index},[round(row),-round(col)]);               
+            tupleoutput = circshift(tuple.response{index},[fix(row),-fix(col)]);               
         case 1
             hashkey = getHashkey(operator.tuples(1:3,sindex)');            
-            tupleoutput = circshift(tuple.hashtable(hashkey),[round(row),-round(col)]);
+            tupleoutput = circshift(tuple.hashtable(hashkey),[fix(row),-fix(col)]);
     end
     
     outputs(:,:,sindex) = tupleoutput;

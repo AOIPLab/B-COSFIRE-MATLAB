@@ -1,15 +1,15 @@
-function [resp segresp resp1 resp2] = BCOSFIRE(image, filter1, filter2, preprocessthresh, thresh)
+function [resp oriensmap] = BCOSFIRE_media15(image, filter1, filter2, preprocessthresh)
 % Delineation of blood vessels in retinal images based on combination of BCOSFIRE filters responses.
 %
-% VERSION 09/09/2014
+% VERSION 02/09/2016
 % CREATED BY: George Azzopardi (1), Nicola Strisciuglio (1,2), Mario Vento (2) and Nicolai Petkov (1)
 %             1) University of Groningen, Johann Bernoulli Institute for Mathematics and Computer Science, Intelligent Systems
 %             1) University of Salerno, Dept. of Information Eng., Electrical Eng. and Applied Math., MIVIA Lab
 %
 %   If you use this script please cite the following paper:
-%   "George Azzopardi, Nicola Strisciuglio, Mario Vento, Nicolai Petkov, 
+%   [1] "George Azzopardi, Nicola Strisciuglio, Mario Vento, Nicolai Petkov, 
 %   Trainable COSFIRE filters for vessel delineation with application to retinal images, 
-%   Medical Image Analysis, Available online 3 September 2014, ISSN 1361-8415, 
+%   Medical Image Analysis, Volume 19 , Issue 1 , 46 - 57, ISSN 1361-8415, 
 %   http://dx.doi.org/10.1016/j.media.2014.08.002"
 % 
 %   BCOSFIRE achieves orientation selectivity by combining the output - at certain 
@@ -44,15 +44,22 @@ function [resp segresp resp1 resp2] = BCOSFIRE(image, filter1, filter2, preproce
 %                response (must be an integer value in [0, 255])
 %
 %   BCOSFIRE returns:
-%      resp     -> response of the combination of a symmetric and an
+%      resp         -> response of the combination of a symmetric and an
 %                   asymemtric COSFIRE filters
-%      segresp  -> binarized vessel map obtained by performing thresholding
-%                   of the final response by a threshold value defined by
-%                   "thresh"
-%      resp1    -> response of the only BCOSFIRE symmetric filter
-%      resp1    -> response of the only BCOSFIRE asymmetric filter
+%      oriensmap    -> map of the orientation that gives the strongest 
+%                   response for each pixel. 
 %
-%   Example: [resp seg r1 r2] = BCOSFIRE(imread('01_test.tif'), f1, f2, 0.5, 38);
+%   The ouput parameter 'oriensmap' is optional. In case it is not
+%   required, the algorithm provides a response image as described in [1].
+%   On the contrary, the response image is computed by first summing up the
+%   symmetric and asymmetric B-COSFIRE filter responses at each
+%   orientation, and then superimposing such responses to achieve rotation
+%   invariance. In this case, the orientation map, with information
+%   about the orientation that gives the strongest response at every pixel,
+%   is provided as output.
+%
+%   Examples: [resp] = BCOSFIRE(imread('01_test.tif'), f1, f2, 0.5, 38);
+%             [resp oriensmap] = BCOSFIRE(imread('01_test.tif'), f1, f2, 0.5, 38);
 %
 %   The image 01_test.tif is taken from the DRIVE data set, which can be 
 %   downloaded from: http://www.isi.uu.nl/Research/Databases/DRIVE/
@@ -102,19 +109,27 @@ asymmfilter{1}.tuples(:, asymmfilter{1}.tuples(4,:) > pi) = []; % Deletion of on
 % Show the structure of the COSFIRE operator
 % showCOSFIREstructure(asymmfilter);
 
-%% Filters application
+%% Filtering
 [image mask] = preprocess(image, [], preprocessthresh);
 image = 1 - image;
 
 % Apply the symmetric B-COSFIRE to the input image
-resp1 = applyCOSFIRE(image, symmfilter);
-resp1 = resp1{1};
+rot1 = applyCOSFIRE(image, symmfilter);
+rot2 = applyCOSFIRE(image, asymmfilter);
 
-% Apply the asymmetric B-COSFIRE to the input image
-resp2 = applyCOSFIRE(image, asymmfilter);
-resp2 = resp2{1};
+if nargout == 1 
+    % The code as presented in the paper
+    rot1 = max(rot1{1},[],3);
+    rot2 = max(rot2{1},[],3);
+    resp = rot1 + rot2;
+elseif nargout == 2   
+    % Modified code to also give the orientation map as output
+    for i = 1:size(rot1{1},3)
+        resp(:,:,i) = rot1{1}(:, :, i) + max(rot2{1}(:,:,i),rot2{1}(:,:,i+12));    
+    end
+    [resp,oriensmap] = max(resp, [], 3);
+    oriensmap = symm_params.invariance.rotation.psilist(oriensmap);
+    oriensmap = oriensmap .* mask;
+end
 
-% Final response
-resp = resp1 + resp2;
 resp = rescaleImage(resp .* mask, 0, 255);
-segresp = (resp > thresh);

@@ -1,5 +1,7 @@
 function [img mask] = preprocess(img, mask, th)
     
+%img = padarray(img,[21 21]);
+
 R = img(:,:,1);
 G = img(:,:,2);
 B = img(:,:,3);
